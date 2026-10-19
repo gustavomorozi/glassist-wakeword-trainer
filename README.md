@@ -83,6 +83,7 @@ The model is `<workspace>/out/<word>.onnx`. Add `--json` before the command for 
 * Short or common words (fewer than 3 syllables, ordinary names) trigger by mistake in conversation; the
   tool warns about them. A good model needs *your* voice and *your* everyday sound, not only synthetic voices.
 * A verdict of "good" requires enough held-out everyday clips; a small sample can never earn it.
+* **Verified end to end (2026-10-18, Windows, Python 3.13, fresh venv):** `init` -> `generate` (500 + 1056 synthetic clips, about 5 min) -> `train` (40 epochs, held-out recall 99%) -> `evaluate` (30/30 exam recordings detected, 4 of 201 normal-speech clips triggered it, verdict "good") -> `install` into a GLaSSIST folder (default `alexa` kept) -> the `.onnx` loads in onnxruntime with input `[1,16,96]`. The window opens, moves through the steps and closes cleanly. This run reused existing voice recordings of the author; **recording from the microphone inside the window was not exercised in this run**. That run found and fixed two missing dependencies (`flet-desktop`, `onnx`).
 * The tests cover the logic (verdicts, collector, installer, CLI consent, window flow with a stubbed
   process). The full train-to-model pipeline was exercised by hand on Windows; Linux and macOS are untested.
 

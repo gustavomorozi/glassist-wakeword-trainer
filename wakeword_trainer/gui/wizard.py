@@ -32,7 +32,7 @@ SETTINGS_FILE = os.path.join(os.path.expanduser('~'), '.wakeword-trainer.json')
 STEP_NAMES = ['Language & word', 'Check the tools', 'Voices', 'Your voice', 'Train', 'Improve', 'Test']
 # python module -> pip package, for the "Check the tools" step
 REQUIRED = [('torch', 'torch'), ('openwakeword', 'openwakeword'), ('edge_tts', 'edge-tts'), ('soundfile', 'soundfile'),
-            ('scipy', 'scipy'), ('onnxruntime', 'onnxruntime'), ('pyaudio', 'PyAudio'),
+            ('scipy', 'scipy'), ('onnxruntime', 'onnxruntime'), ('onnx', 'onnx'), ('pyaudio', 'PyAudio'),
             ('sklearn', 'scikit-learn')]
 
 
