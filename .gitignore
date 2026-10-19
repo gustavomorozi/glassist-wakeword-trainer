@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.env
+# your own recordings and models: never commit these
+wakeword_workspace/
+wakeword-trainer/
+projects/
+*.wav
+*.onnx
+*.npz

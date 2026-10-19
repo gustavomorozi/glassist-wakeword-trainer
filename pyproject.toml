@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wakeword-trainer"
+version = "0.1.0"
+description = "Train a custom openWakeWord wake word in your own language, with your own voice, and get a plain .onnx file."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "soundfile",
+    "onnxruntime",
+    "edge-tts",
+    "PyAudio",
+    "flet==0.28.3",
+    "requests",
+    "tqdm",
+    "scikit-learn",
+]
+# openwakeword is installed separately with --no-deps (see README): its metadata requires tflite-runtime
+# on Linux, which is not needed for ONNX models. torch is installed from the CPU index.
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+wakeword-trainer = "wakeword_trainer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["wakeword_trainer*"]
+
+[tool.setuptools.package-data]
+wakeword_trainer = ["base_models.json", "corpora/*.json", "gui/locales/*.json"]
