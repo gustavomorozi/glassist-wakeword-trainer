@@ -4,6 +4,9 @@
   wakeword-trainer models                                # download + verify the base models
   wakeword-trainer generate --workspace DIR --allow-online-tts
   wakeword-trainer record   --workspace DIR word|speech|quiet|exam|everyday [--seconds N]
+  wakeword-trainer transients --workspace DIR [--count 300]          # synthetic clicks/knocks as negatives
+  wakeword-trainer mine-hard --workspace DIR [--model X.onnx]      # keep the synthetic sounds that fool the model
+  wakeword-trainer import-detections --workspace DIR --detections FOLDER --log FILE [--include-positives]
   wakeword-trainer train    --workspace DIR [--epochs 40] [--rebuild]
   wakeword-trainer evaluate --workspace DIR
   wakeword-trainer scan     --workspace DIR [--tag env] [--all-clips]
@@ -70,9 +73,26 @@ def build_parser():
     p.add_argument('--seconds', type=int, help='default: word 120, exam 75, speech 180, quiet 30, everyday 3600')
     p.add_argument('--max-clips', type=int, default=300, help='everyday: stop after this many clips with sound')
     p.add_argument('--device', type=int, help='input device index (default: system default, or WAKEWORD_TRAINER_MIC)')
+    p = add('transients', 'make synthetic clicks, knocks, claps and key presses to use as negatives (no recording)')
+    p.add_argument('--count', type=int, default=300)
+    p = add('mine-hard', 'search random sounds for the ones that fool the current model and keep them as negatives')
+    p.add_argument('--model', help='ONNX to attack (default: the project model)')
+    p.add_argument('--candidates', type=int, default=2000)
+    p.add_argument('--keep', type=int, default=150)
+    p.add_argument('--min-score', type=float, default=0.2)
+    p.add_argument('--seed', type=int, default=777)
+    p = add('import-detections', 'use the clips GLaSSIST saved on each trigger, labelled by what the pipeline did next')
+    p.add_argument('--detections', required=True, help='folder with trig_*.wav (e.g. glassist/detections/bruninha)')
+    p.add_argument('--log', required=True, action='append', help='GLaSSIST log file (repeat for several)')
+    p.add_argument('--include-positives', action='store_true', help='also add the triggers the assistant understood to real_pos')
+    p.add_argument('--window', type=int, default=30, help='seconds after a trigger to look for the pipeline result')
     p = add('train', 'train the model and export the .onnx')
     p.add_argument('--epochs', type=int, default=40)
     p.add_argument('--rebuild', action='store_true', help='recompute the audio features')
+    p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--ensemble', type=int, default=1, help='train N heads that must agree (fewer false triggers)')
+    p.add_argument('--bag', type=float, default=1.0, help='ensemble: fraction of the negatives each head sees (e.g. 0.8)')
+    p.add_argument('--mixed-sizes', action='store_true', help='ensemble: heads of different sizes')
     add('evaluate', 'check the model on audio it never trained on')
     p = add('scan', 'count how many everyday clips trigger the model')
     p.add_argument('--tag', default='env')
@@ -148,10 +168,20 @@ def run(args):
                 n = recorder.append_ambient(audio, ws.ambient)
             emit('result', kind=args.kind, clips=n if args.kind != 'quiet' else None,
                  seconds=round(len(audio) / 16000, 1))
+    elif cmd == 'transients':
+        from . import transients
+        emit('result', **transients.generate(ws, args.count, progress=progress))
+    elif cmd == 'mine-hard':
+        from . import mine
+        emit('result', **mine.mine(ws, args.model or ws.model_path, args.candidates, args.keep, args.min_score, args.seed, progress=progress))
+    elif cmd == 'import-detections':
+        from . import detections
+        emit('result', **detections.import_detections(ws, args.detections, args.log, args.include_positives, args.window))
     elif cmd == 'train':
         from . import models_check, train
         models_check.ensure(download=True, log=log)
-        emit('result', **train.train(ws, args.epochs, progress=progress, log=log, rebuild=args.rebuild,
+        emit('result', **train.train(ws, args.epochs, progress=progress, log=log, rebuild=args.rebuild, seed=args.seed, ensemble=args.ensemble,
+                                     bag=args.bag, mixed_sizes=args.mixed_sizes,
                                      stage=lambda name, state: emit('stage', name=name, state=state)))
     elif cmd == 'evaluate':
         from . import evaluate

@@ -78,6 +78,29 @@ wakeword-trainer install  --workspace ./bruninha --glassist /path/to/GLaSSIST
 
 The model is `<workspace>/out/<word>.onnx`. Add `--json` before the command for one JSON event per line.
 
+### Fewer false triggers (measured)
+
+A short word such as "Bruninha" tends to fire on everyday sounds. These tools were added and **measured** on one
+real case (one word, one user, one microphone), always on audio the model never trained on:
+
+* `train --ensemble 5`: five heads trained with different seeds, exported as ONE model that fires only when **all
+  agree** (lowest score wins). A single run varied a lot on the same data (2.6% to 8.2% of 231 held-out everyday
+  clips fired it); the 5-head consensus fired 1 of 231, still detecting 30 of 30 exam clips.
+* `mine-hard`: generates thousands of random sounds (clicks, knocks, syllable-like bursts), lets the current model
+  score them and keeps the ones that fool it as negatives. Training the consensus with them: **0 of 231** real
+  clips, **0 of 1500** hard test sounds (the previous consensus: 1 of 231 and 1 of 1500; the original single
+  model: 4 of 231 and 6 of 1500). The hard sounds come from the same generator family as the mined ones, so
+  the real-clip number is the independent one.
+* `import-detections`: turns the clips GLaSSIST saves on every trigger into training data, labelled by what the
+  pipeline did next ("no text recognised" = false trigger = negative).
+* `evaluate` now also prints `threshold_advice` (the lowest threshold that lets no everyday clip through).
+
+What did **not** help, so you do not repeat it: random synthetic clicks (`transients`; no model reacted to them,
+so they taught nothing) and speed/pitch perturbation of the positives (`speed_perturb`, now off by default; it made
+a run worse: 0.87% vs 0.07% of hard test sounds). A 7-head bagged consensus looked best on real clips (0 of 231) but
+was worse on hard sounds (0.87%). These are small samples from a single setup: treat the numbers as evidence for
+this case, not as a guarantee.
+
 ### Honest expectations
 
 * Short or common words (fewer than 3 syllables, ordinary names) trigger by mistake in conversation; the
