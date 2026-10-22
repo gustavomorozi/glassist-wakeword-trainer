@@ -82,6 +82,8 @@ def build_parser():
     p = add('train', 'train the model and export the .onnx')
     p.add_argument('--epochs', type=int, default=40)
     p.add_argument('--rebuild', action='store_true', help='recompute the audio features')
+    p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--ensemble', type=int, default=1, help='train N heads that must agree (fewer false triggers)')
     add('evaluate', 'check the model on audio it never trained on')
     p = add('scan', 'count how many everyday clips trigger the model')
     p.add_argument('--tag', default='env')
@@ -166,7 +168,7 @@ def run(args):
     elif cmd == 'train':
         from . import models_check, train
         models_check.ensure(download=True, log=log)
-        emit('result', **train.train(ws, args.epochs, progress=progress, log=log, rebuild=args.rebuild,
+        emit('result', **train.train(ws, args.epochs, progress=progress, log=log, rebuild=args.rebuild, seed=args.seed, ensemble=args.ensemble,
                                      stage=lambda name, state: emit('stage', name=name, state=state)))
     elif cmd == 'evaluate':
         from . import evaluate

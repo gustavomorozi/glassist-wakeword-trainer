@@ -66,27 +66,22 @@ def export_onnx(model, path):
         torch.onnx.export(model, dummy, path, **kwargs)
 
 
-def train(ws, epochs=40, hidden=32, progress=None, log=print, rebuild=False, seed=0, stage=None):
-    """`stage(name, state)` is called with state 'start' / 'done' for: prepare, features, train, export."""
-    stage = stage or (lambda name, state: None)
-    torch.manual_seed(seed); np.random.seed(seed); random.seed(seed)
-    stage('prepare', 'start')
-    files = F.split_files(ws)
-    if not files['train_pos'] or not files['train_neg']:
-        raise RuntimeError('no synthetic voices found: run the "Voices" step first')
-    if not files['train_real_pos']:
-        log('warning: no recordings of your voice; the model will only know synthetic voices')
-    stage('prepare', 'done')
-    stage('features', 'start')
-    data = build_features(ws, log, rebuild)
-    stage('features', 'done')
-    stage('train', 'start')
-    Xp, Xn = data['train']
-    Xp_h, Xn_h = data['hold']
-    if len(Xp) == 0 or len(Xn) == 0:
-        raise RuntimeError('no training windows: generate the synthetic voices first')
-    log(f'training windows: {len(Xp)} positive, {len(Xn)} negative')
+class Consensus(nn.Module):
+    """Several heads that must AGREE: the output is the lowest score of the group. A false trigger needs every
+    head to be fooled at once, so false triggers drop sharply while real detections (which all heads see) stay.
+    Same [1,16,96] -> [1,1] interface, so it drops into openWakeWord / GLaSSIST unchanged."""
 
+    def __init__(self, heads):
+        super().__init__()
+        self.heads = nn.ModuleList(heads)
+
+    def forward(self, x):
+        return torch.stack([h(x) for h in self.heads]).min(0).values
+
+
+def _fit(Xp, Xn, Xp_h, Xn_h, epochs, hidden, seed, log, progress):
+    """Train ONE head. Returns (model, history)."""
+    torch.manual_seed(seed); np.random.seed(seed); random.seed(seed)
     model = Head(hidden)
     opt = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-3)
     X = np.concatenate([Xp, Xn])
@@ -120,13 +115,45 @@ def train(ws, epochs=40, hidden=32, progress=None, log=print, rebuild=False, see
                 f'false windows={fpr:.4f}')
         if progress:
             progress(epoch + 1, epochs)
+    return model.eval(), history
+
+
+def train(ws, epochs=40, hidden=32, progress=None, log=print, rebuild=False, seed=0, stage=None, ensemble=1):
+    """`stage(name, state)` is called with state 'start' / 'done' for: prepare, features, train, export.
+    ensemble > 1 trains that many heads with different seeds and exports them as one consensus model."""
+    stage = stage or (lambda name, state: None)
+    torch.manual_seed(seed); np.random.seed(seed); random.seed(seed)
+    stage('prepare', 'start')
+    files = F.split_files(ws)
+    if not files['train_pos'] or not files['train_neg']:
+        raise RuntimeError('no synthetic voices found: run the "Voices" step first')
+    if not files['train_real_pos']:
+        log('warning: no recordings of your voice; the model will only know synthetic voices')
+    stage('prepare', 'done')
+    stage('features', 'start')
+    data = build_features(ws, log, rebuild)
+    stage('features', 'done')
+    stage('train', 'start')
+    Xp, Xn = data['train']
+    Xp_h, Xn_h = data['hold']
+    if len(Xp) == 0 or len(Xn) == 0:
+        raise RuntimeError('no training windows: generate the synthetic voices first')
+    log(f'training windows: {len(Xp)} positive, {len(Xn)} negative')
+
+    heads, history = [], []
+    for k in range(max(1, ensemble)):
+        if ensemble > 1:
+            log(f'head {k + 1}/{ensemble} (seed {seed + k})')
+        model, hist = _fit(Xp, Xn, Xp_h, Xn_h, epochs, hidden, seed + k, log, progress)
+        heads.append(model); history = hist
 
     stage('train', 'done')
     stage('export', 'start')
     os.makedirs(ws.out, exist_ok=True)
-    export_onnx(model, ws.model_path)
+    export_onnx(heads[0] if len(heads) == 1 else Consensus(heads), ws.model_path)
     stage('export', 'done')
     with open(os.path.join(ws.out, 'training.json'), 'w', encoding='utf-8') as f:
-        json.dump({'history': history, 'epochs': epochs, 'hidden': hidden}, f, indent=2)
+        json.dump({'history': history, 'epochs': epochs, 'hidden': hidden, 'ensemble': len(heads), 'seed': seed},
+                  f, indent=2)
     log(f'model saved: {ws.model_path}')
     return {'model': ws.model_path, 'history': history}

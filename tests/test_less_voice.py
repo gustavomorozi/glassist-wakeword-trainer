@@ -85,3 +85,18 @@ def test_threshold_advice_picks_the_lowest_threshold_with_no_false_clip():
     assert recommend_threshold([], [0.1]) is None
     weak = recommend_threshold([0.9], [0.1] * 10)
     assert weak['evidence'] == 'weak'
+
+
+def test_consensus_output_is_the_lowest_head_and_keeps_the_interface():
+    torch = pytest.importorskip('torch')
+    from wakeword_trainer.train import Consensus, Head
+    torch.manual_seed(0)
+    heads = [Head(8).eval() for _ in range(3)]
+    group = Consensus(heads).eval()
+    x = torch.randn(5, 16, 96)
+    with torch.no_grad():
+        each = torch.stack([h(x) for h in heads])
+        out = group(x)
+    assert out.shape == (5, 1)
+    assert torch.allclose(out, each.min(0).values)
+    assert bool((out <= each.max(0).values + 1e-9).all())
