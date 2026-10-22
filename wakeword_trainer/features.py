@@ -86,12 +86,14 @@ def augment(a, ambient=None):
 
 def speed_perturb(a, low=0.9, high=1.1):
     """Play the clip a little faster or slower (speed and pitch change together, like another speaker).
-    Makes every real recording worth several, so fewer of your own recordings are needed."""
+    Makes every real recording worth several, so fewer of your own recordings are needed.
+    OFF by default: in a measured run (same data, 5-head consensus) turning it on, together with synthetic
+    transients, raised the false-trigger rate of 1500 hard test sounds from 0.07% to 0.87%."""
     ratio = Fraction(float(rng.uniform(low, high))).limit_denominator(40)
     return resample_poly(a, ratio.denominator, ratio.numerator).astype(np.float32)
 
 
-def clip_windows(a, is_pos, ambient=None, n_aug=3, speed=True):
+def clip_windows(a, is_pos, ambient=None, n_aug=3, speed=False):
     X, y = [], []
     for _ in range(n_aug):
         b = speed_perturb(a) if (is_pos and speed and rng.random() < 0.6) else a

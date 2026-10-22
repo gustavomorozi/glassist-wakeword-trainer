@@ -100,3 +100,20 @@ def test_consensus_output_is_the_lowest_head_and_keeps_the_interface():
     assert out.shape == (5, 1)
     assert torch.allclose(out, each.min(0).values)
     assert bool((out <= each.max(0).values + 1e-9).all())
+
+
+def test_mining_candidates_are_valid_three_second_clips():
+    from wakeword_trainer import mine
+    rng = np.random.default_rng(5)
+    kinds = set()
+    for _ in range(40):
+        c = mine.candidate(rng)
+        assert c.dtype == np.float32 and len(c) == 48000 and np.isfinite(c).all() and np.abs(c).max() <= 1.0
+        kinds.add(float(np.abs(c).max()) > 0)
+    assert kinds == {True}
+
+
+def test_a_vowel_is_voiced_not_silent():
+    from wakeword_trainer import mine
+    v = mine._vowel(np.random.default_rng(1), 0.2, 150)
+    assert len(v) == int(16000 * 0.2) and np.abs(v).max() > 0.9
