@@ -45,10 +45,29 @@ def per_hour(false_clips, clips):
     return false_clips / clips * 3600 / CLIP_SECONDS
 
 
+
+def recommend_threshold(pos_scores, neg_scores, max_false_clips=0):
+    """The lowest trigger threshold that lets at most `max_false_clips` everyday clips through, and how many
+    of the real wake-word clips still trigger at it. Mirrors what big assistants do: pick the operating point
+    from the measured false-accept rate instead of a fixed number. The estimate is only as good as the number
+    of everyday clips checked (see `evidence`)."""
+    pos, neg = np.asarray(pos_scores, float), np.asarray(neg_scores, float)
+    if len(neg) == 0 or len(pos) == 0:
+        return None
+    for t in np.arange(0.05, 1.0, 0.01):
+        if int((neg > t).sum()) <= max_false_clips:
+            return {'threshold': round(float(t), 2), 'recall': round(float((pos > t).mean()), 3),
+                    'false_clips': int((neg > t).sum()), 'everyday_clips': int(len(neg)),
+                    'evidence': 'weak' if len(neg) < MIN_CLIPS_FOR_GOOD else 'ok'}
+    return {'threshold': None, 'recall': None, 'false_clips': int((neg > 0.99).sum()),
+            'everyday_clips': int(len(neg)), 'evidence': 'no threshold avoids every false clip'}
+
+
 def evaluate(ws, model_path=None, thresholds=(0.5, 0.7, 0.9), progress=None):
     head = OnnxHead(model_path or ws.model_path)
     files = F.split_files(ws)
     result = {}
+    raw = {}
     steps = [('test_pos', files['test_pos']), ('hold_real_neg', files['hold_real_neg']),
              ('hold_neg', files['hold_neg'])]
     total = sum(len(v) for _, v in steps) + 1
@@ -60,6 +79,7 @@ def evaluate(ws, model_path=None, thresholds=(0.5, 0.7, 0.9), progress=None):
             done += 1
             if progress:
                 progress(done, total)
+        raw[name] = scores
         result[name] = {'clips': len(group), 'above': _rates(scores, thresholds),
                         'worst': sorted([(round(s, 3), os.path.basename(f)) for s, f in zip(scores, group)],
                                         reverse=True)[:5]}
@@ -71,6 +91,7 @@ def evaluate(ws, model_path=None, thresholds=(0.5, 0.7, 0.9), progress=None):
     if progress:
         progress(total, total)
     result['verdict'] = verdict(result)
+    result['threshold_advice'] = recommend_threshold(raw.get('test_pos', []), raw.get('hold_real_neg', []))
     return result
 
 

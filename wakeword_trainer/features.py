@@ -11,7 +11,9 @@ import os
 
 import numpy as np
 import soundfile as sf
-from scipy.signal import fftconvolve, lfilter
+from fractions import Fraction
+
+from scipy.signal import fftconvolve, lfilter, resample_poly
 
 from . import FRAME, SAMPLE_RATE as SR, WINDOW
 
@@ -82,13 +84,21 @@ def augment(a, ambient=None):
     return np.clip(a + noise * np.sqrt(ps / (pn * 10 ** (snr / 10))), -1, 1).astype(np.float32)
 
 
-def clip_windows(a, is_pos, ambient=None, n_aug=3):
+def speed_perturb(a, low=0.9, high=1.1):
+    """Play the clip a little faster or slower (speed and pitch change together, like another speaker).
+    Makes every real recording worth several, so fewer of your own recordings are needed."""
+    ratio = Fraction(float(rng.uniform(low, high))).limit_denominator(40)
+    return resample_poly(a, ratio.denominator, ratio.numerator).astype(np.float32)
+
+
+def clip_windows(a, is_pos, ambient=None, n_aug=3, speed=True):
     X, y = [], []
-    start, end = word_bounds(a)
     for _ in range(n_aug):
+        b = speed_perturb(a) if (is_pos and speed and rng.random() < 0.6) else a
+        start, end = word_bounds(b)
         pre = int(rng.uniform(0.6, 1.6) * SR)
         post = int(rng.uniform(0.2, 0.8) * SR)
-        x = augment(np.concatenate([np.zeros(pre, np.float32), a, np.zeros(post, np.float32)]), ambient)
+        x = augment(np.concatenate([np.zeros(pre, np.float32), b, np.zeros(post, np.float32)]), ambient)
         wins = sliding_windows(embeddings(x))
         w_start, w_end = (pre + start) / SR, (pre + end) / SR
         for k, win in enumerate(wins):

@@ -4,6 +4,8 @@
   wakeword-trainer models                                # download + verify the base models
   wakeword-trainer generate --workspace DIR --allow-online-tts
   wakeword-trainer record   --workspace DIR word|speech|quiet|exam|everyday [--seconds N]
+  wakeword-trainer transients --workspace DIR [--count 300]          # synthetic clicks/knocks as negatives
+  wakeword-trainer import-detections --workspace DIR --detections FOLDER --log FILE [--include-positives]
   wakeword-trainer train    --workspace DIR [--epochs 40] [--rebuild]
   wakeword-trainer evaluate --workspace DIR
   wakeword-trainer scan     --workspace DIR [--tag env] [--all-clips]
@@ -70,6 +72,13 @@ def build_parser():
     p.add_argument('--seconds', type=int, help='default: word 120, exam 75, speech 180, quiet 30, everyday 3600')
     p.add_argument('--max-clips', type=int, default=300, help='everyday: stop after this many clips with sound')
     p.add_argument('--device', type=int, help='input device index (default: system default, or WAKEWORD_TRAINER_MIC)')
+    p = add('transients', 'make synthetic clicks, knocks, claps and key presses to use as negatives (no recording)')
+    p.add_argument('--count', type=int, default=300)
+    p = add('import-detections', 'use the clips GLaSSIST saved on each trigger, labelled by what the pipeline did next')
+    p.add_argument('--detections', required=True, help='folder with trig_*.wav (e.g. glassist/detections/bruninha)')
+    p.add_argument('--log', required=True, action='append', help='GLaSSIST log file (repeat for several)')
+    p.add_argument('--include-positives', action='store_true', help='also add the triggers the assistant understood to real_pos')
+    p.add_argument('--window', type=int, default=30, help='seconds after a trigger to look for the pipeline result')
     p = add('train', 'train the model and export the .onnx')
     p.add_argument('--epochs', type=int, default=40)
     p.add_argument('--rebuild', action='store_true', help='recompute the audio features')
@@ -148,6 +157,12 @@ def run(args):
                 n = recorder.append_ambient(audio, ws.ambient)
             emit('result', kind=args.kind, clips=n if args.kind != 'quiet' else None,
                  seconds=round(len(audio) / 16000, 1))
+    elif cmd == 'transients':
+        from . import transients
+        emit('result', **transients.generate(ws, args.count, progress=progress))
+    elif cmd == 'import-detections':
+        from . import detections
+        emit('result', **detections.import_detections(ws, args.detections, args.log, args.include_positives, args.window))
     elif cmd == 'train':
         from . import models_check, train
         models_check.ensure(download=True, log=log)
